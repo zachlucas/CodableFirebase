@@ -340,6 +340,22 @@ fileprivate struct _FirebaseKeyedDecodingContainer<K : CodingKey> : KeyedDecodin
         
         return value
     }
+
+    public func decode(_ type: IndexSet.Type, forKey key: Key) throws -> IndexSet {
+        guard let entry = self.container[key.stringValue] else {
+            throw DecodingError.keyNotFound(key, DecodingError.Context(codingPath: self.decoder.codingPath, debugDescription: "No value associated with key \(key) (\"\(key.stringValue)\")."))
+        }
+
+        self.decoder.codingPath.append(key)
+        defer { self.decoder.codingPath.removeLast() }
+
+        guard let value = try self.decoder.unbox(entry, as: Array<Int>.self) else {
+            throw DecodingError.valueNotFound(type, DecodingError.Context(codingPath: self.decoder.codingPath, debugDescription: "Expected \(type) value but found null instead."))
+        }
+
+        return IndexSet(value)
+    }
+
     
     public func decode<T : Decodable>(_ type: T.Type, forKey key: Key) throws -> T {
         guard let entry = container[key.stringValue] else {
@@ -1229,8 +1245,11 @@ extension _FirebaseDecoder {
             case .custom(let decodeFunc):
                 decoded = try decodeFunc(value) as! T
             }
-        }
-        else {
+        } else if T.self == IndexSet.self || T.self == NSIndexSet.self {
+            decoded = value as! T
+        } else if options.skipFirestoreTypes && (T.self is FirestoreDecodable.Type) {
+            decoded = value as! T
+        } else {
             self.storage.push(container: value)
             decoded = try T(from: self)
             self.storage.popContainer()

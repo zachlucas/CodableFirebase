@@ -150,7 +150,8 @@ fileprivate struct _FirebaseKeyedEncodingContainer<K : CodingKey> : KeyedEncodin
     public mutating func encode(_ value: String, forKey key: Key) throws { container[key.stringValue] = encoder.box(value) }
     public mutating func encode(_ value: Float, forKey key: Key)  throws { container[key.stringValue] = encoder.box(value) }
     public mutating func encode(_ value: Double, forKey key: Key) throws { container[key.stringValue] = encoder.box(value) }
-    
+    public mutating func encode(_ value: IndexSet, forKey key: Key) throws { container[key.stringValue] = encoder.box(value) }
+
     public mutating func encode<T : Encodable>(_ value: T, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
@@ -226,6 +227,7 @@ fileprivate struct _FirebaseUnkeyedEncodingContainer : UnkeyedEncodingContainer 
     public mutating func encode(_ value: Float)  throws { container.add(self.encoder.box(value)) }
     public mutating func encode(_ value: Double) throws { container.add(self.encoder.box(value)) }
     public mutating func encode(_ value: String) throws { container.add(self.encoder.box(value)) }
+    public mutating func encode(_ value: IndexSet) throws { container.add(self.encoder.box(value)) }
     
     public mutating func encode<T : Encodable>(_ value: T) throws {
         encoder.codingPath.append(_FirebaseKey(index: count))
@@ -297,7 +299,8 @@ extension _FirebaseEncoder {
     fileprivate func box(_ value: Float)  -> NSObject { return NSNumber(value: value) }
     fileprivate func box(_ value: Double) -> NSObject { return NSNumber(value: value) }
     fileprivate func box(_ value: String) -> NSObject { return NSString(string: value) }
-    
+    fileprivate func box(_ value: IndexSet) -> NSObject { return Array(value) as NSArray }
+
     fileprivate func box<T : Encodable>(_ value: T) throws -> NSObject {
         return try self.box_(value) ?? NSDictionary()
     }
@@ -388,6 +391,13 @@ extension _FirebaseEncoder {
             }
 
             guard let result = target as? NSObject else {
+                throw DocumentReferenceError.typeIsNotNSObject
+            }
+            return result
+        } else if T.self == IndexSet.self || T.self == NSIndexSet.self {
+            return (value as! NSIndexSet)
+        } else if options.skipFirestoreTypes && (value is FirestoreEncodable) {
+            guard let value = value as? NSObject else {
                 throw DocumentReferenceError.typeIsNotNSObject
             }
             return result
@@ -495,6 +505,11 @@ extension _FirebaseEncoder : SingleValueEncodingContainer {
         assertCanEncodeNewValue()
         storage.push(container: box(value))
     }
+
+    public func encode(_ value: IndexSet) throws {
+        assertCanEncodeNewValue()
+        storage.push(container: box(value))
+    }
     
     public func encode<T : Encodable>(_ value: T) throws {
         assertCanEncodeNewValue()
@@ -567,7 +582,7 @@ fileprivate class _FirebaseReferencingEncoder : _FirebaseEncoder {
 }
 
 internal extension DecodingError {
-    internal static func _typeMismatch(at path: [CodingKey], expectation: Any.Type, reality: Any) -> DecodingError {
+    static func _typeMismatch(at path: [CodingKey], expectation: Any.Type, reality: Any) -> DecodingError {
         let description = "Expected to decode \(expectation) but found \(_typeDescription(of: reality)) instead."
         return .typeMismatch(expectation, Context(codingPath: path, debugDescription: description))
     }
